@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Council - LLM Debate Orchestrator</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 AI Council</h1>
+            <p class="subtitle">Orchestrate multiple LLMs to debate and answer questions</p>
+        </header>
+
+        <main>
+            <section class="input-section">
+                <h2>Setup Your Debate</h2>
+                
+                <div class="form-group">
+                    <label for="question">Question:</label>
+                    <textarea 
+                        id="question" 
+                        rows="4" 
+                        placeholder="Enter your question here..."
+                        required
+                    ></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Select Models (choose at least 2):</label>
+                    <div id="models-container" class="models-grid">
+                        <!-- Models will be loaded here dynamically -->
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="rounds">Debate Rounds:</label>
+                    <input 
+                        type="number" 
+                        id="rounds" 
+                        min="1" 
+                        max="5" 
+                        value="2"
+                    >
+                    <small>Number of back-and-forth debate rounds (1-5)</small>
+                </div>
+
+                <button id="start-debate" class="btn-primary">
+                    Start Debate
+                </button>
+            </section>
+
+            <section class="results-section" id="results-section" style="display: none;">
+                <h2>Debate Results</h2>
+                
+                <div id="loading" class="loading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Running debate... This may take a minute.</p>
+                </div>
+
+                <div id="debate-output">
+                    <!-- Debate results will appear here -->
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>AI Council - Local LLM Debate Orchestrator</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
