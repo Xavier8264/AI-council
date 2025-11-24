@@ -1,3 +1,10 @@
+"""
+DEPRECATED: This module contains legacy API clients for cloud-based LLMs.
+The AI Council now uses Ollama for offline, local LLM inference.
+See ollama_client.py for the current implementation.
+
+This file is kept for reference only.
+"""
 import httpx
 import os
 import json
