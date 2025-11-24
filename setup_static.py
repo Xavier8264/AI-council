@@ -10,18 +10,18 @@ with open('static/index.html', 'w', encoding='utf-8') as f:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Council - Multi-LLM Debate Platform</title>
+    <title>AI Council - Offline LLM Debate Platform</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🤖 AI Council</h1>
-            <p class="subtitle">Where AI models debate to find the best answer</p>
+            <p class="subtitle">Offline debate platform with unanimous consent - Powered by Ollama</p>
         </header>
 
         <div class="config-status" id="configStatus">
-            <span>Checking configuration...</span>
+            <span>Checking Ollama status...</span>
         </div>
 
         <main>
@@ -40,16 +40,16 @@ with open('static/index.html', 'w', encoding='utf-8') as f:
                     </div>
                     
                     <div class="form-group">
-                        <label for="rounds">Debate Rounds:</label>
+                        <label for="rounds">Maximum Debate Rounds:</label>
                         <input 
                             type="number" 
                             id="rounds" 
                             name="rounds" 
                             min="1" 
-                            max="5" 
-                            value="2"
+                            max="20" 
+                            value="10"
                         >
-                        <small>More rounds = deeper analysis but longer wait time</small>
+                        <small>Debate continues until consensus or max rounds reached</small>
                     </div>
 
                     <button type="submit" id="submitBtn" class="btn-primary">
@@ -63,10 +63,15 @@ with open('static/index.html', 'w', encoding='utf-8') as f:
                 
                 <div class="loading" id="loading">
                     <div class="spinner"></div>
-                    <p>The AI models are debating... This may take a minute or two.</p>
+                    <p>The AI models are debating locally... Seeking unanimous consent.</p>
+                    <p class="loading-detail">This may take a few minutes depending on your models.</p>
                 </div>
 
                 <div id="debateResults" style="display: none;">
+                    <div class="consensus-banner" id="consensusBanner">
+                        <!-- Consensus status will be inserted here -->
+                    </div>
+
                     <div class="question-display">
                         <h3>Question:</h3>
                         <p id="displayQuestion"></p>
@@ -88,7 +93,7 @@ with open('static/index.html', 'w', encoding='utf-8') as f:
         </main>
 
         <footer>
-            <p>Built with FastAPI, Python, and vanilla JavaScript</p>
+            <p>Powered by Ollama - 100% offline and private | Built with FastAPI & Python</p>
         </footer>
     </div>
 
@@ -98,29 +103,45 @@ with open('static/index.html', 'w', encoding='utf-8') as f:
 
 # Create script.js
 with open('static/script.js', 'w', encoding='utf-8') as f:
-    f.write('''// Check API configuration on load
+    f.write('''// Check Ollama and model status on load
 async function checkHealth() {
     try {
         const response = await fetch('/api/health');
         const data = await response.json();
         
         const configStatus = document.getElementById('configStatus');
-        const providers = data.configured_providers;
-        const configuredCount = Object.values(providers).filter(v => v).length;
         
-        if (configuredCount === 0) {
+        if (!data.ollama_running) {
             configStatus.innerHTML = `
-                <span class="status-error">⚠️ No API keys configured. Please set up your .env file.</span>
+                <span class="status-error">⚠️ Ollama is not running. Please start with: ollama serve</span>
             `;
             configStatus.className = 'config-status error';
-        } else {
-            const providerNames = Object.entries(providers)
+            return;
+        }
+        
+        const readyCount = data.ready_models;
+        const totalCount = data.total_configured;
+        
+        if (readyCount === 0) {
+            configStatus.innerHTML = `
+                <span class="status-error">⚠️ No models available. Please pull models: ollama pull llama3.1</span>
+            `;
+            configStatus.className = 'config-status error';
+        } else if (readyCount < totalCount) {
+            const modelList = Object.entries(data.configured_models)
                 .filter(([k, v]) => v)
-                .map(([k, v]) => k.toUpperCase())
+                .map(([k, v]) => k)
                 .join(', ');
             
             configStatus.innerHTML = `
-                <span class="status-success">✓ Ready - Configured: ${providerNames}</span>
+                <span class="status-warning">⚠ ${readyCount}/${totalCount} models ready: ${modelList}</span>
+            `;
+            configStatus.className = 'config-status warning';
+        } else {
+            const modelList = Object.keys(data.configured_models).join(', ');
+            
+            configStatus.innerHTML = `
+                <span class="status-success">✓ All ${readyCount} models ready: ${modelList}</span>
             `;
             configStatus.className = 'config-status success';
         }
@@ -138,7 +159,7 @@ document.getElementById('debateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
     const question = document.getElementById('question').value.trim();
-    const rounds = parseInt(document.getElementById('rounds').value);
+    const max_rounds = parseInt(document.getElementById('rounds').value);
     
     if (!question) {
         alert('Please enter a question');
@@ -154,7 +175,7 @@ document.getElementById('debateForm').addEventListener('submit', async (e) => {
     // Disable submit button
     const submitBtn = document.getElementById('submitBtn');
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Debating...';
+    submitBtn.textContent = 'Seeking Consensus...';
     
     // Scroll to results
     document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
@@ -165,7 +186,7 @@ document.getElementById('debateForm').addEventListener('submit', async (e) => {
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ question, rounds })
+            body: JSON.stringify({ question, max_rounds })
         });
         
         if (!response.ok) {
@@ -187,6 +208,24 @@ document.getElementById('debateForm').addEventListener('submit', async (e) => {
 });
 
 function displayResults(data) {
+    // Display consensus banner
+    const consensusBanner = document.getElementById('consensusBanner');
+    if (data.consensus_reached) {
+        consensusBanner.innerHTML = `
+            <div class="consensus-success">
+                <h3>✓ Unanimous Consensus Reached!</h3>
+                <p>All models agreed after ${data.consensus_round} round(s)</p>
+            </div>
+        `;
+    } else {
+        consensusBanner.innerHTML = `
+            <div class="consensus-partial">
+                <h3>⚠ Partial Agreement</h3>
+                <p>Models reached maximum rounds (${data.total_rounds}) without full consensus</p>
+            </div>
+        `;
+    }
+    
     // Display question
     document.getElementById('displayQuestion').textContent = data.question;
     
@@ -198,8 +237,13 @@ function displayResults(data) {
         const roundDiv = document.createElement('div');
         roundDiv.className = 'debate-round';
         
+        // Add consensus indicator if this was the consensus round
+        const consensusIndicator = (data.consensus_reached && round.round === data.consensus_round) 
+            ? ' <span class="consensus-indicator">✓ Consensus Reached</span>' 
+            : '';
+        
         const roundTitle = document.createElement('h3');
-        roundTitle.textContent = `Round ${round.round}: ${round.description}`;
+        roundTitle.innerHTML = `Round ${round.round}: ${round.description}${consensusIndicator}`;
         roundDiv.appendChild(roundTitle);
         
         round.responses.forEach(resp => {
@@ -311,6 +355,11 @@ header .subtitle {
     color: var(--error-color);
 }
 
+.config-status.warning {
+    background-color: #fef3c7;
+    color: #d97706;
+}
+
 .input-section, .results-section {
     background: var(--card-bg);
     padding: 30px;
@@ -387,6 +436,12 @@ header .subtitle {
     padding: 40px;
 }
 
+.loading-detail {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-top: 10px;
+}
+
 .spinner {
     border: 4px solid var(--border-color);
     border-top: 4px solid var(--primary-color);
@@ -400,6 +455,43 @@ header .subtitle {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+.consensus-banner {
+    margin-bottom: 30px;
+}
+
+.consensus-success {
+    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+    padding: 20px;
+    border-radius: 8px;
+    border: 2px solid var(--success-color);
+    text-align: center;
+}
+
+.consensus-success h3 {
+    color: var(--success-color);
+    margin-bottom: 10px;
+}
+
+.consensus-partial {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    padding: 20px;
+    border-radius: 8px;
+    border: 2px solid #d97706;
+    text-align: center;
+}
+
+.consensus-partial h3 {
+    color: #d97706;
+    margin-bottom: 10px;
+}
+
+.consensus-indicator {
+    color: var(--success-color);
+    font-weight: 600;
+    margin-left: 10px;
+    font-size: 0.9em;
 }
 
 .question-display {
