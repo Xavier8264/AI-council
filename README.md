@@ -1,14 +1,17 @@
-# AI Council - Multi-LLM Debate Platform
+# AI Council - Multi-LLM Debate & Consensus Platform
 
-A local web application that orchestrates multiple LLMs (OpenAI, Anthropic, Google, xAI) to debate questions and produce synthesized answers.
+A local application that orchestrates multiple LLMs (remote APIs and optional local Ollama models) to debate questions, iteratively refine answers, and optionally pursue unanimous consensus.
 
 ## Features
 
-- 🤖 Multi-model debate system (GPT-4, Claude, Gemini, Grok)
-- 🔄 Configurable debate rounds
+- 🤖 Multi-model debate system (GPT-4, Claude, Gemini, Grok + Ollama models)
+- 🔄 Two modes: Fixed rounds OR consensus-seeking loop
 - 🎨 Clean, responsive web interface
 - 🔒 Secure local execution with API keys in .env
 - ⚡ Fast async API calls with httpx
+- 🧩 Pluggable model registry (easy to add more providers)
+- 🏠 Optional offline / local-only mode via `OLLAMA_ONLY=1`
+- 🧠 Automatic Ollama model recommendations per question domain
 
 ## Tech Stack
 
@@ -18,7 +21,7 @@ A local web application that orchestrates multiple LLMs (OpenAI, Anthropic, Goog
 - **Server**: Uvicorn
 - **Config**: python-dotenv
 
-## Quick Start
+## Quick Start (Remote API Models)
 
 ### 1. Install Dependencies
 
@@ -105,34 +108,83 @@ AI-council/
 - `POST /api/debate` - Run a debate
 - `GET /api/health` - Check configuration status
 
-## How It Works
+## How It Works (Debate Modes)
 
-1. **Round 1**: Each LLM provides an initial response to the question
-2. **Additional Rounds**: Models review each other's responses, critique weaknesses, and refine their answers
-3. **Synthesis**: Claude generates a final answer integrating the best points from all perspectives
+### Fixed-Round Debate
+1. **Round 1**: Each model provides an initial response
+2. **Refinement Rounds**: Each model critiques others and improves its answer
+3. **Synthesis**: A designated synthesizer model (Claude if available, else first model) combines strongest points
+
+### Consensus-Seeking Debate
+Iterates until either all model responses are sufficiently similar (pairwise similarity threshold) or `max_rounds` is reached. Each round nudges models toward shared agreement while retaining accuracy.
+
+Consensus is detected with a simple textual similarity heuristic (difflib `SequenceMatcher`). Adjustable threshold via `similarity_threshold` (default 0.85).
 
 ## Customization
 
-### Change Models
+### Model Configuration (`models.json`)
+On first run a `models.json` file is created. Example:
+```json
+{
+	"models": [
+		{"name": "OpenAI GPT-4o Mini", "provider": "openai", "model": "gpt-4o-mini", "mode": "remote"},
+		{"name": "Anthropic Claude 3.5 Sonnet", "provider": "anthropic", "model": "claude-3-5-sonnet-20241022", "mode": "remote"},
+		{"name": "Google Gemini 1.5 Flash", "provider": "google", "model": "gemini-1.5-flash", "mode": "remote"},
+		{"name": "xAI Grok Beta", "provider": "xai", "model": "grok-beta", "mode": "remote"}
+	]
+}
+```
+Add local Ollama models by appending entries:
+```json
+{"name": "Llama3 8B", "provider": "ollama", "model": "llama3:8b", "mode": "ollama"}
+```
 
-Edit `llm_clients.py` to modify which specific models are used:
-- OpenAI: Currently using `gpt-4o-mini` (line 17)
-- Anthropic: Currently using `claude-3-5-sonnet-20241022` (line 44)
-- Google: Currently using `gemini-1.5-flash` (line 70)
-- xAI: Currently using `grok-beta` (line 96)
+Set `OLLAMA_ONLY=1` in `.env` to restrict the council to local models only (offline mode).
 
-### Adjust Debate Logic
+### Adding New Providers
+Implement a new async function in `llm_clients.py` then add its metadata to `models.json`.
 
-Edit `debate_engine.py` to:
-- Modify prompts
-- Change debate flow
-- Add additional rounds or synthesis steps
+### Adjust Debate & Consensus Logic
+See `debate_engine.py`:
+- Modify prompt wording
+- Tweak consensus similarity threshold (API param)
+- Change synthesis strategy
+
+### Ollama Integration
+Install Ollama (https://ollama.com) and pull desired models, e.g.:
+```bash
+ollama pull llama3:8b
+ollama pull phi3.5:mini
+```
+Then add them to `models.json` as shown above.
+
+### Model Recommendations
+Endpoint: `GET /api/recommend_models?question=...`
+Returns recommended installed vs missing Ollama models based on simple domain classification of the question.
+
+Domains & example mapping include: code (deepseek-coder), reasoning (llama3.1), math (mathstral), general (phi3.5), science (mistral).
+
+## API Usage (Extended)
+
+`POST /api/debate` body examples:
+```json
+{"question": "Explain a quicksort optimization", "rounds": 3}
+```
+Fixed-round mode.
+```json
+{"question": "Design a secure data sharing policy", "consensus": true, "max_rounds": 8, "similarity_threshold": 0.88}
+```
+Consensus-seeking mode.
+
+`GET /api/recommend_models?question=integrate%20a%20polynomial`
+Returns math-oriented model suggestions.
 
 ## Requirements
 
 - Python 3.8+
-- Active API keys for at least one LLM provider
-- Internet connection for API calls
+- Optional: Remote API keys (OpenAI, Anthropic, Google, xAI)
+- Optional: Ollama installed for local models
+- Internet connection (unless using `OLLAMA_ONLY=1` + local models)
 
 ## Security Notes
 
@@ -140,6 +192,11 @@ Edit `debate_engine.py` to:
 - API keys are loaded from environment variables only
 - All API calls are made from the backend (keys never exposed to frontend)
 
-## License
+## Roadmap / Ideas
+- Embedding-based consensus scoring for semantic agreement
+- Weighted voting (assign expertise weights per domain)
+- Persistent debate history & caching
+- Automatic model pulling if missing (with user confirmation)
 
+## License
 MIT

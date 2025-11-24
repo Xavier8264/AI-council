@@ -1,112 +1,105 @@
 import asyncio
-from typing import List, Dict
-from llm_clients import call_openai, call_anthropic, call_gemini, call_grok
+import os
+from typing import List, Dict, Optional
+from model_registry import ModelRegistry, responses_consensus
+from llm_clients import call_anthropic
 
 class DebateEngine:
-    def __init__(self):
-        self.models = {
-            "OpenAI GPT": call_openai,
-            "Anthropic Claude": call_anthropic,
-            "Google Gemini": call_gemini,
-            "xAI Grok": call_grok
-        }
-    
+    def __init__(self, registry: Optional[ModelRegistry] = None):
+        self.registry = registry or ModelRegistry()
+
     async def run_debate(self, question: str, rounds: int = 2) -> Dict:
-        """
-        Run a debate between multiple LLMs.
-        
-        Args:
-            question: The question to debate
-            rounds: Number of debate rounds (default 2)
-        
-        Returns:
-            Dictionary containing debate history and final synthesis
-        """
+        """Original fixed-round debate (backwards compatible)."""
         debate_history = []
-        
-        # Round 1: Initial responses
-        round_1_prompt = f"You are participating in a multi-AI debate. Please provide your initial answer to this question:\n\n{question}\n\nBe clear, concise, and explain your reasoning."
-        
+        round_prompt_base = (
+            "You are participating in a multi-AI debate. "
+            "Provide your answer and reasoning concisely. Question:\n\n" + question
+        )
         debate_history.append({
             "round": 1,
             "description": "Initial responses",
-            "responses": await self._get_all_responses(round_1_prompt)
+            "responses": await self.registry.generate_all(round_prompt_base)
         })
-        
-        # Additional rounds: Critique and refine
         for round_num in range(2, rounds + 1):
-            previous_responses = debate_history[-1]["responses"]
-            other_responses_text = self._format_other_responses(previous_responses)
-            
-            round_prompt = f"""You are participating in a multi-AI debate on this question:
-
-{question}
-
-Here are the responses from other AI models in the previous round:
-
-{other_responses_text}
-
-Please review these perspectives, critique any weaknesses you see, and refine your own answer. Be respectful but candid."""
-            
+            prev = debate_history[-1]["responses"]
+            other_text = self._format_other_responses(prev)
+            prompt = (
+                f"You are refining your perspective on the question:\n\n{question}\n\n"
+                "Here are other models' previous responses:\n\n"
+                f"{other_text}\n"
+                "Critique weaknesses briefly then present an improved, clear answer."
+            )
             debate_history.append({
                 "round": round_num,
                 "description": f"Round {round_num}: Critique and refinement",
-                "responses": await self._get_all_responses(round_prompt)
+                "responses": await self.registry.generate_all(prompt)
             })
-        
-        # Final synthesis
-        all_perspectives = self._format_all_rounds(debate_history)
-        synthesis_prompt = f"""You are synthesizing a debate between multiple AI models on this question:
+        synthesis = await self._synthesize(question, debate_history)
+        return {"question": question, "debate_history": debate_history, "final_answer": synthesis}
 
-{question}
-
-Here is the complete debate history:
-
-{all_perspectives}
-
-Please provide a final, synthesized answer that:
-1. Integrates the strongest points from all perspectives
-2. Addresses any disagreements or conflicts
-3. Provides a clear, actionable conclusion
-
-Be comprehensive but concise."""
-        
-        final_answer = await call_anthropic(synthesis_prompt)
-        
+    async def run_until_consensus(self, question: str, max_rounds: int = 6, similarity_threshold: float = 0.85) -> Dict:
+        """Iterate rounds until responses are in consensus or max rounds reached."""
+        debate_history = []
+        round_num = 1
+        consensus = False
+        while round_num <= max_rounds and not consensus:
+            if round_num == 1:
+                prompt = (
+                    "You are part of an AI council. Provide a clear initial answer "
+                    f"to the question and reasoning. Question:\n\n{question}"
+                )
+            else:
+                prev = debate_history[-1]["responses"]
+                other_text = self._format_other_responses(prev)
+                prompt = (
+                    f"We seek unanimous consent on: {question}\n\n"
+                    "Previous round responses:\n\n"
+                    f"{other_text}\n"
+                    "Identify converging points. Adjust your answer to maximize shared agreement while remaining accurate."
+                )
+            responses = await self.registry.generate_all(prompt)
+            debate_history.append({
+                "round": round_num,
+                "description": "Consensus iteration" if round_num > 1 else "Initial responses",
+                "responses": responses
+            })
+            resp_texts = [r["response"] for r in responses]
+            consensus = responses_consensus(resp_texts, threshold=similarity_threshold)
+            round_num += 1
+        synthesis = await self._synthesize(question, debate_history, consensus=consensus)
         return {
             "question": question,
             "debate_history": debate_history,
-            "final_answer": final_answer
+            "consensus_reached": consensus,
+            "final_answer": synthesis
         }
-    
-    async def _get_all_responses(self, prompt: str) -> List[Dict[str, str]]:
-        """Get responses from all models concurrently."""
-        tasks = [
-            self._get_model_response(name, func, prompt)
-            for name, func in self.models.items()
-        ]
-        return await asyncio.gather(*tasks)
-    
-    async def _get_model_response(self, name: str, func, prompt: str) -> Dict[str, str]:
-        """Get response from a single model."""
-        response = await func(prompt)
-        return {
-            "model": name,
-            "response": response
-        }
-    
+
+    async def _synthesize(self, question: str, debate_history: List[Dict], consensus: bool = False) -> str:
+        all_text = self._format_all_rounds(debate_history)
+        mode_line = "Consensus achieved" if consensus else "Consensus not fully achieved"
+        synth_prompt = (
+            f"You are synthesizing an AI council debate. {mode_line}.\n\nQuestion:\n{question}\n\nDebate history:\n{all_text}\n\n"
+            "Provide a final consolidated answer that captures strongest shared points, resolves conflicts, and is actionable."
+        )
+        # Prefer Anthropic for synthesis if key exists else fallback to first model
+        if os.getenv("ANTHROPIC_API_KEY"):
+            return await call_anthropic(synth_prompt)
+        # fallback: ask first model again
+        first = self.registry.models[0] if self.registry.models else None
+        if first:
+            return await first.generate(synth_prompt)
+        return "No models available for synthesis."
+
     def _format_other_responses(self, responses: List[Dict[str, str]]) -> str:
-        """Format other models' responses for the next round."""
         formatted = []
-        for resp in responses:
-            formatted.append(f"**{resp['model']}:**\n{resp['response']}\n")
+        for r in responses:
+            formatted.append(f"**{r['model']}:**\n{r['response']}\n")
         return "\n".join(formatted)
-    
-    def _format_all_rounds(self, debate_history: List[Dict]) -> str:
-        """Format all debate rounds for final synthesis."""
-        formatted = []
-        for round_data in debate_history:
-            formatted.append(f"\n=== Round {round_data['round']}: {round_data['description']} ===\n")
-            for resp in round_data["responses"]:
-                formatted.append(f"**{resp['model']}:**\n{resp['response']}\n")
-        return "\n".join(formatted)
+
+    def _format_all_rounds(self, history: List[Dict]) -> str:
+        out = []
+        for rd in history:
+            out.append(f"\n=== Round {rd['round']} ({rd['description']}) ===\n")
+            for resp in rd["responses"]:
+                out.append(f"**{resp['model']}:**\n{resp['response']}\n")
+        return "\n".join(out)
