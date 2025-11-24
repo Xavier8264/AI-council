@@ -1,6 +1,4 @@
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
@@ -10,10 +8,7 @@ from model_registry import recommend_ollama_models, ModelRegistry
 # Load environment variables
 load_dotenv()
 
-app = FastAPI(title="AI Council - Multi-LLM Debate Platform")
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app = FastAPI(title="AI Council - Multi-LLM Debate Platform (API-only)")
 
 # Initialize debate engine
 model_registry = ModelRegistry()
@@ -28,8 +23,16 @@ class DebateRequest(BaseModel):
 
 @app.get("/")
 async def read_root():
-    """Serve the main HTML page."""
-    return FileResponse("static/index.html")
+    """Simple API index."""
+    return {
+        "name": "AI Council",
+        "mode": "API-only",
+        "endpoints": {
+            "debate": "/api/debate",
+            "recommend_models": "/api/recommend_models",
+            "health": "/api/health"
+        }
+    }
 
 @app.post("/api/debate")
 async def create_debate(request: DebateRequest):
@@ -56,17 +59,12 @@ async def create_debate(request: DebateRequest):
             raise HTTPException(status_code=400, detail="similarity_threshold must be between 0.5 and 0.99")
     
     # Check if at least one model is callable: remote key OR valid ollama-only configuration
-    remote_keys_present = any([
-        os.getenv("OPENAI_API_KEY"),
-        os.getenv("ANTHROPIC_API_KEY"),
-        os.getenv("GOOGLE_API_KEY"),
-        os.getenv("XAI_API_KEY")
-    ])
+    # Ollama-only: ensure at least one Ollama model is configured
     has_ollama_models = any(getattr(m, "mode", "remote") == "ollama" for m in model_registry.models)
-    if not remote_keys_present and not (model_registry.ollama_only and has_ollama_models):
+    if not has_ollama_models:
         raise HTTPException(
             status_code=500,
-            detail="No usable models configured. Provide API keys or enable Ollama models with OLLAMA_ONLY=1 and entries in models.json."
+            detail="No local Ollama models configured. Add entries to models.json and ensure Ollama is running."
         )
     
     try:
@@ -87,14 +85,8 @@ async def health_check():
     """Check API health and configuration status."""
     return {
         "status": "healthy",
-        "configured_providers": {
-            "openai": bool(os.getenv("OPENAI_API_KEY")),
-            "anthropic": bool(os.getenv("ANTHROPIC_API_KEY")),
-            "google": bool(os.getenv("GOOGLE_API_KEY")),
-            "xai": bool(os.getenv("XAI_API_KEY"))
-        },
-        "models_loaded": model_registry.list_model_names(),
-        "ollama_only": model_registry.ollama_only
+        "ollama_only": True,
+        "models_loaded": model_registry.list_model_names()
     }
 
 @app.get("/api/recommend_models")

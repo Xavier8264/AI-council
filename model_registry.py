@@ -5,14 +5,6 @@ import asyncio
 from typing import Callable, Dict, List, Any, Optional
 from difflib import SequenceMatcher
 
-# Import existing remote client functions
-from llm_clients import (
-    call_openai,
-    call_anthropic,
-    call_gemini,
-    call_grok,
-)
-
 class ModelClient:
     def __init__(self, name: str, provider: str, model: str, mode: str = "remote"):
         self.name = name
@@ -29,17 +21,8 @@ class ModelClient:
             return f"Unsupported mode for {self.name}"
 
     async def _generate_remote(self, prompt: str) -> str:
-        # Map provider to function
-        mapping: Dict[str, Callable[[str], Any]] = {
-            "openai": call_openai,
-            "anthropic": call_anthropic,
-            "google": call_gemini,
-            "xai": call_grok,
-        }
-        func = mapping.get(self.provider)
-        if not func:
-            return f"Provider {self.provider} not supported"
-        return await func(prompt)
+        # Remote providers disabled in Ollama-only mode
+        return f"Remote provider '{self.provider}' is disabled (Ollama-only mode)."
 
     async def _generate_ollama(self, prompt: str) -> str:
         url = "http://localhost:11434/api/generate"
@@ -54,7 +37,7 @@ class ModelClient:
             return f"Ollama Error ({self.model}): {e}"\
 
 class ModelRegistry:
-    def __init__(self, config_path: str = "models.json", ollama_only: bool = False):
+    def __init__(self, config_path: str = "models.json", ollama_only: bool = True):
         self.config_path = config_path
         self.ollama_only = ollama_only or os.getenv("OLLAMA_ONLY") == "1"
         self.models: List[ModelClient] = []
@@ -62,16 +45,12 @@ class ModelRegistry:
 
     def load_config(self) -> None:
         if not os.path.exists(self.config_path):
-            # default config
+            # default Ollama-only config
             default = {
                 "models": [
-                    {"name": "OpenAI GPT-4o Mini", "provider": "openai", "model": "gpt-4o-mini", "mode": "remote"},
-                    {"name": "Anthropic Claude 3.5 Sonnet", "provider": "anthropic", "model": "claude-3-5-sonnet-20241022", "mode": "remote"},
-                    {"name": "Google Gemini 1.5 Flash", "provider": "google", "model": "gemini-1.5-flash", "mode": "remote"},
-                    {"name": "xAI Grok Beta", "provider": "xai", "model": "grok-beta", "mode": "remote"},
-                    # Example local models (uncomment if installed)
-                    # {"name": "Llama3 8B", "provider": "ollama", "model": "llama3:8b", "mode": "ollama"},
-                    # {"name": "Phi3 Mini", "provider": "ollama", "model": "phi3:mini", "mode": "ollama"},
+                    {"name": "Llama3 8B", "provider": "ollama", "model": "llama3:8b", "mode": "ollama"},
+                    {"name": "Phi3.5 Mini", "provider": "ollama", "model": "phi3.5:mini", "mode": "ollama"},
+                    {"name": "Qwen2.5 7B", "provider": "ollama", "model": "qwen2.5:7b", "mode": "ollama"}
                 ]
             }
             with open(self.config_path, "w", encoding="utf-8") as f:

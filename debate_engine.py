@@ -1,8 +1,6 @@
 import asyncio
-import os
 from typing import List, Dict, Optional
 from model_registry import ModelRegistry, responses_consensus
-from llm_clients import call_anthropic
 
 class DebateEngine:
     def __init__(self, registry: Optional[ModelRegistry] = None):
@@ -81,10 +79,7 @@ class DebateEngine:
             f"You are synthesizing an AI council debate. {mode_line}.\n\nQuestion:\n{question}\n\nDebate history:\n{all_text}\n\n"
             "Provide a final consolidated answer that captures strongest shared points, resolves conflicts, and is actionable."
         )
-        # Prefer Anthropic for synthesis if key exists else fallback to first model
-        if os.getenv("ANTHROPIC_API_KEY"):
-            return await call_anthropic(synth_prompt)
-        # fallback: ask first model again
+        # Offline-only synthesis using the first available local model
         first = self.registry.models[0] if self.registry.models else None
         if first:
             return await first.generate(synth_prompt)
