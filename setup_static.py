@@ -46,7 +46,7 @@ with open('static/index.html', 'w', encoding='utf-8') as f:
                             id="rounds" 
                             name="rounds" 
                             min="1" 
-                            max="20" 
+                            max="15" 
                             value="10"
                         >
                         <small>Debate continues until consensus or max rounds reached</small>

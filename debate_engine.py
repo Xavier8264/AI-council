@@ -136,9 +136,8 @@ Be comprehensive but concise."""
         Check if consensus has been reached among the models.
         
         This is a simplified consensus check based on:
-        1. Response length similarity
-        2. Key phrase overlap
-        3. Sentiment/agreement indicators
+        1. Error-free responses
+        2. Agreement indicators in responses
         
         Args:
             responses: List of model responses
@@ -149,40 +148,34 @@ Be comprehensive but concise."""
         if len(responses) < 2:
             return True
         
-        # Extract response texts
-        texts = [r["response"] for r in responses if not r["response"].startswith("Error:")]
+        # Extract response texts and check for errors
+        valid_responses = []
+        for r in responses:
+            response_text = r["response"]
+            # Check for error patterns (more robust than just checking prefix)
+            if (response_text.startswith("Error:") or 
+                "error" in response_text.lower()[:50] or 
+                "failed" in response_text.lower()[:50]):
+                # If any model has an error, no consensus
+                return False
+            valid_responses.append(response_text)
         
-        # If any model errored, no consensus
-        if len(texts) != len(responses):
-            return False
+        # Get agreement phrases from config
+        agreement_phrases = self.consensus_settings.get("agreement_phrases", [])
         
         # Check for agreement indicators in responses
-        agreement_phrases = [
-            "i agree",
-            "i concur",
-            "similarly",
-            "as the others mentioned",
-            "building on the previous",
-            "consensus",
-            "we all agree",
-            "shared understanding",
-            "common ground",
-            "aligned with",
-            "same conclusion"
-        ]
-        
         agreement_count = 0
-        for text in texts:
+        for text in valid_responses:
             text_lower = text.lower()
             if any(phrase in text_lower for phrase in agreement_phrases):
                 agreement_count += 1
         
         # If majority of models show agreement indicators
-        agreement_ratio = agreement_count / len(texts)
+        agreement_ratio = agreement_count / len(valid_responses)
         min_ratio = self.consensus_settings.get("min_agreement_ratio", 0.8)
         
         if agreement_ratio >= min_ratio:
-            logger.info(f"Consensus detected: {agreement_count}/{len(texts)} models show agreement")
+            logger.info(f"Consensus detected: {agreement_count}/{len(valid_responses)} models show agreement")
             return True
         
         return False

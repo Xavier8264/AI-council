@@ -48,8 +48,8 @@ async def create_debate(request: DebateRequest):
     if not request.question or len(request.question.strip()) == 0:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     
-    if request.max_rounds < 1 or request.max_rounds > 20:
-        raise HTTPException(status_code=400, detail="Max rounds must be between 1 and 20")
+    if request.max_rounds < 1 or request.max_rounds > 15:
+        raise HTTPException(status_code=400, detail="Max rounds must be between 1 and 15")
     
     # Check if Ollama is available
     if not await check_ollama_available():

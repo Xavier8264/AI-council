@@ -63,6 +63,22 @@ CONSENSUS_SETTINGS = {
     "max_rounds": 10,  # Maximum debate rounds before forcing conclusion
     "similarity_threshold": 0.85,  # How similar responses must be (0-1)
     "min_agreement_ratio": 0.8,  # Minimum ratio of models that must agree
+    "agreement_phrases": [
+        "i agree",
+        "i concur",
+        "similarly",
+        "as the others mentioned",
+        "as mentioned",
+        "building on the previous",
+        "consensus",
+        "we all agree",
+        "shared understanding",
+        "common ground",
+        "aligned with",
+        "same conclusion",
+        "in agreement",
+        "agree with"
+    ]
 }
 
 def get_active_models():

@@ -103,8 +103,8 @@ async def verify_model_available(model: str) -> bool:
         bool: True if model is available, False otherwise
     """
     available_models = await list_available_models()
-    # Check if model name matches exactly or is a prefix match
-    return any(m.startswith(model) or model in m for m in available_models)
+    # Exact match or model with version tags (e.g., "llama3.1" matches "llama3.1:latest")
+    return any(m == model or m.startswith(f"{model}:") for m in available_models)
 
 async def pull_model(model: str) -> bool:
     """
